@@ -1,0 +1,43 @@
+version: '3.9'
+services:  
+  csv-file-processor-pub:
+      image: clovisgargione/csv-file-processor-pub
+      container_name: csv-file-processor-pub
+      restart: always
+      environment:
+        TZ: America/Sao_Paulo
+        APP_PORT: 8088
+        QUARKUS_OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+        KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+        PRODUCER_BATCH_SIZE: 1000
+      networks:
+        - codifica-network
+      ports:
+        - 8088:8088
+      volumes:
+      - file-data:/app/data    
+  csv-file-processor-sub:
+      image: clovisgargione/csv-file-processor-sub
+      container_name: csv-file-processor-sub
+      restart: always
+      environment:
+        TZ: America/Sao_Paulo
+        APP_PORT: 8087
+        QUARKUS_OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+        KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+        QUARKUS_MONGODB_CONNECTION_STRING: mongodb://mongodb:27017
+      networks:
+        - codifica-network
+      ports:
+      - 8087:8087
+networks:
+  codifica-network:
+    external: true
+    name: timely_codifica-network
+volumes:
+  file-data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/clovis/Documentos/file-data
+      o: bind    
