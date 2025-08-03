@@ -13,8 +13,8 @@ import org.jboss.logging.Logger;
 
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class FileIngestionService {
@@ -27,14 +27,18 @@ public class FileIngestionService {
     @ConfigProperty(name = "app.files.processed.dir")
     private String filesProcessedDir;
 
-
-    @Inject
     private CsvFileProcessorBackPressure processor;
 
-    @Inject
     private RegistroBatchSender sender;
 
-    public Uni<Void> processAllFiles() throws Exception {
+    public FileIngestionService(CsvFileProcessorBackPressure processor, RegistroBatchSender sender) {
+        this.processor = processor;
+        this.sender = sender;
+    }
+
+
+
+    public Uni<Void> processAllFiles() {
 
         File dir = new File(filesDir);
         if (!dir.exists() || !dir.isDirectory()) {
@@ -67,6 +71,7 @@ public class FileIngestionService {
                 Uni<Void> processamentoCompleto = loteUni   
                                                         .onItem()
                                                         .transformToUniAndConcatenate(lote -> sender.processarArquivo(Uni.createFrom().item(lote))) // Multi<Void>
+                                                        .runSubscriptionOn(Infrastructure.getDefaultExecutor())
                                                         .collect()
                                                         .asList()   // Uni<List<Void>>
                                                         .replaceWithVoid();

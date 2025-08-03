@@ -11,6 +11,7 @@ import org.jboss.logging.Logger;
 
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -43,6 +44,7 @@ public class RegistroBatchSender {
             }
             CompletionStage<Void> stage = emitter.send(lote);
             return Uni.createFrom().completionStage(stage)
+                .runSubscriptionOn(Infrastructure.getDefaultExecutor())
                 .invoke(() -> LOG.info("Lote enviado com sucesso"));
         } catch (Exception e) {
             LOG.error("Erro ao enviar lote para Kafka", e);

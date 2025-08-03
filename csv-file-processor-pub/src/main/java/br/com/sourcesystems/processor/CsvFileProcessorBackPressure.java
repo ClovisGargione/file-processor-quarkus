@@ -8,6 +8,7 @@ import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.Executors;
 
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -16,7 +17,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import io.smallrye.mutiny.Multi;
-import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
 
 @ApplicationScoped
@@ -47,6 +47,7 @@ public class CsvFileProcessorBackPressure {
                     reader = new FileReader(file);
                 } catch (FileNotFoundException e) {
                     LOG.infof("Não foi possível ler o arquivo {}", file.getName());
+                    throw new RuntimeException("Arquivo não encontrado", e);
                 } 
                 CSVFormat format = null;
                 format = CSVFormat.Builder.create()
@@ -68,8 +69,8 @@ public class CsvFileProcessorBackPressure {
                 try {
                     List<Registro> batch = new ArrayList<>(batchSize);
                     while (state.iterator.hasNext() && batch.size() < batchSize) {
-                        CSVRecord record = state.iterator.next();
-                        batch.add(new Registro(record));
+                        CSVRecord records = state.iterator.next();
+                        batch.add(new Registro(records));
                     }
 
                     if (!batch.isEmpty()) {
@@ -79,13 +80,19 @@ public class CsvFileProcessorBackPressure {
                         state.reader.close();
                     }
                 } catch (Exception e) {
+                    try {
+                        state.reader.close();
+                        LOG.infof("Reader fechado após falha: %s", file.getName());
+                    } catch (IOException ex) {
+                        LOG.error("Erro ao fechar o reader após falha", ex);
+                    }
                     emitter.fail(e);
                 }
                 return state;
             }
         );
 
-        return multi.runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+        return multi.runSubscriptionOn(Executors.newVirtualThreadPerTaskExecutor());
 
     }
 

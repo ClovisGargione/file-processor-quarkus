@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 import org.bson.Document;
@@ -12,11 +13,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
 import org.jboss.logging.Logger;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.micrometer.core.annotation.Timed;
 import io.micrometer.core.instrument.Counter;
@@ -39,8 +35,6 @@ public class KafkaConsumer {
 
     private final MeterRegistry meterRegistry;
 
-    private final ObjectMapper mapper;
-
     @ConfigProperty(name = "consumer.batch.size", defaultValue = "100")
     private int batchSize;
 
@@ -54,7 +48,6 @@ public class KafkaConsumer {
     public KafkaConsumer(ReactiveMongoClient mongoClient, MeterRegistry meterRegistry) {
         this.mongoClient = mongoClient;
         this.meterRegistry = meterRegistry;
-        this.mapper = new ObjectMapper();
     }
 
     @PostConstruct
@@ -65,9 +58,7 @@ public class KafkaConsumer {
 
     
     @Incoming("registros-csv")
-    public CompletionStage<Void> receive(List<List<Registro>> registros) throws JsonMappingException, JsonProcessingException {
-        //LOG.info("KafkaConsumer: recebendo registros");
-        //List<Registro> registros = mapper.readValue(payload, new TypeReference<List<Registro>>() {});
+    public CompletionStage<Void> receive(List<List<Registro>> registros) {
         LOG.info("Total de registros: " + registros.size());
         LOG.info("KafkaConsumer: recebidos registros, total: " + (registros == null ? "null" : registros.size()));
         if (registros == null || registros.isEmpty()) {
@@ -76,11 +67,11 @@ public class KafkaConsumer {
 
         List<Registro> registrosUnicos = registros.stream()
             .flatMap(List::stream)
-            .collect(Collectors.toList());
+            .toList();
        
         
     return processarLote(registrosUnicos)
-        .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
+        .runSubscriptionOn(Executors.newVirtualThreadPerTaskExecutor())
         .onItem().invoke(() -> {
             LOG.info("Lote processado com sucesso");
             batchesSucesso.increment();
@@ -133,7 +124,7 @@ public class KafkaConsumer {
                         subLote.forEach(r -> salvarErro(r, e));
                     })
                     .replaceWithVoid();
-            }).merge(consumerParallelism)  // Espera o último elemento emitido (Uni<Void>)
+            }).merge(consumerParallelism).runSubscriptionOn(Executors.newVirtualThreadPerTaskExecutor())  // Espera o último elemento emitido (Uni<Void>)
             .collect().last().replaceWithVoid();
     }
 
